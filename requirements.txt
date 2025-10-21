@@ -3,8 +3,8 @@ uvicorn[standard]
 onnxruntime
 Pillow
 pandas
-numpy==1.24.4
+numpy
 scipy
 torch
 torchvision
-google-genai
+google-generativeai
