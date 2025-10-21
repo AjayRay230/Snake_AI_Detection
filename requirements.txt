@@ -1,11 +1,9 @@
-# /snake-ai-api/requirements.txt
-fastapi
-uvicorn[standard]
-onnxruntime
-Pillow
-pandas
-numpy
-scipy
-torch
-torchvision
-google-genai
+fastapi==0.111.0
+uvicorn[standard]==0.23.2
+onnxruntime==1.15.1
+Pillow==10.1.0
+pandas==2.1.1
+numpy==1.26.5
+scipy==1.11.1
+google-genai==0.1.5
+python-multipart==0.0.6
