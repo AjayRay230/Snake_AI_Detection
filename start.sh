@@ -1,8 +1,9 @@
 #!/bin/bash
-# =============================
-# start.sh for Snake AI API
-# =============================
-# Run FastAPI with Gunicorn using 1 worker to avoid OOM
-# Bind to Render's $PORT environment variable
 
-exec gunicorn -w 1 -k uvicorn.workers.UvicornWorker api.main:app --bind 0.0.0.0:$PORT
+# Exit on error
+set -e
+
+echo "Starting Snake AI Detection API..."
+
+# Run FastAPI using uvicorn
+uvicorn api.main:app --host 0.0.0.0 --port 7860

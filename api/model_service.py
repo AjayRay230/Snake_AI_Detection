@@ -8,21 +8,28 @@ import pandas as pd
 from PIL import Image
 import onnxruntime as ort
 from scipy.special import softmax
-import google.generativeai as genai  # updated import
+import google.generativeai as genai
+from dotenv import load_dotenv  # Load environment variables
 
+# ===================== 0. LOAD ENV =====================
+load_dotenv()  # loads .env file in root automatically
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
+else:
+    print("WARNING: GEMINI_API_KEY not found. Image generation will fail.")
+
+# ===================== 1. PATHS & MODEL =====================
 BASE_DIR = Path(__file__).resolve().parent
-
-# ===================== 1. ONNX MODEL =====================
-
 ONNX_MODEL_PATH = BASE_DIR / "ViT_PreProcessing-ops11-preprocessing-int-dynam_graph.onnx"
 
+# Load ONNX model globally
 try:
     session = ort.InferenceSession(str(ONNX_MODEL_PATH), providers=["CPUExecutionProvider"])
 except FileNotFoundError:
     raise SystemExit(f"ONNX model not found at {ONNX_MODEL_PATH}. Deployment cannot proceed.")
 
 # ===================== 2. IMAGE PREPROCESSING =====================
-
 def preprocess_image(image: Image.Image) -> np.ndarray:
     image = image.convert("RGB").resize((224, 224))
     arr = np.array(image, dtype=np.float32) / 255.0
@@ -30,10 +37,9 @@ def preprocess_image(image: Image.Image) -> np.ndarray:
     return np.expand_dims(arr, axis=0)
 
 # ===================== 3. PREDICTION FUNCTION =====================
-
 def predict_snake(image: Image.Image) -> dict:
     try:
-        # Lazy load CSVs to save memory
+        # Lazy-load CSVs to save memory
         metadata = pd.read_csv(BASE_DIR / "train_metadata.csv")
         venom_data = pd.read_csv(BASE_DIR / "venomstatus_with_antivenom.csv")
         country_metadata = pd.read_csv(BASE_DIR / "min-train_metadata.csv")
@@ -70,15 +76,9 @@ def predict_snake(image: Image.Image) -> dict:
         return {"error": "Prediction failed", "detail": str(e)}
 
 # ===================== 4. GEMINI IMAGE GENERATION =====================
-
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-
 def generate_image_from_text(prompt: str) -> tuple[bytes, Image.Image]:
     if not GEMINI_API_KEY:
         raise ConnectionError("Gemini API key not configured.")
-
-    # Configure Gemini on-demand
-    genai.configure(api_key=GEMINI_API_KEY)
 
     full_prompt = f"Highly detailed, scientifically accurate photo of a snake: {prompt}"
 
@@ -95,10 +95,7 @@ def generate_image_from_text(prompt: str) -> tuple[bytes, Image.Image]:
     if not result.generated_images:
         raise RuntimeError("Gemini API returned no image.")
 
-    # Extract image bytes
     image_bytes = result.generated_images[0].image.image_bytes
     gen_image_pil = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-
-    # Resize to 224x224 to match ONNX input
     gen_image_pil = gen_image_pil.resize((224, 224))
     return image_bytes, gen_image_pil
