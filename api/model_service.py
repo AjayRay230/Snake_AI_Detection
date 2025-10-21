@@ -10,66 +10,36 @@ import onnxruntime as ort
 from scipy.special import softmax
 import google.generativeai as genai  # updated import
 
-# ===================== 1. GLOBAL INITIALIZATION =====================
-
 BASE_DIR = Path(__file__).resolve().parent
 
-ONNX_MODEL_PATH = BASE_DIR / "ViT_PreProcessing-ops11-preprocessing-int-dynam_graph.onnx"
-METADATA_PATH = BASE_DIR / "train_metadata.csv"
-VENOM_DATA_PATH = BASE_DIR / "venomstatus_with_antivenom.csv"
-COUNTRY_DATA_PATH = BASE_DIR / "min-train_metadata.csv"
+# ===================== 1. ONNX MODEL =====================
 
-# Load ONNX model globally
+ONNX_MODEL_PATH = BASE_DIR / "ViT_PreProcessing-ops11-preprocessing-int-dynam_graph.onnx"
+
 try:
     session = ort.InferenceSession(str(ONNX_MODEL_PATH), providers=["CPUExecutionProvider"])
 except FileNotFoundError:
     raise SystemExit(f"ONNX model not found at {ONNX_MODEL_PATH}. Deployment cannot proceed.")
 
-# Load CSV metadata safely
-def load_csv(path):
-    try:
-        return pd.read_csv(path)
-    except FileNotFoundError:
-        raise SystemExit(f"Required CSV not found: {path}")
-
-metadata = load_csv(METADATA_PATH)
-venom_data = load_csv(VENOM_DATA_PATH)
-country_metadata = load_csv(COUNTRY_DATA_PATH)
-
-class_names = metadata['binomial'].unique()
-
-# ===================== 2. GEMINI API CONFIG =====================
-
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
-else:
-    print("WARNING: GEMINI_API_KEY not found. Image generation will fail.")
-
-# ===================== 3. IMAGE PREPROCESSING =====================
+# ===================== 2. IMAGE PREPROCESSING =====================
 
 def preprocess_image(image: Image.Image) -> np.ndarray:
     image = image.convert("RGB").resize((224, 224))
-    input_array = np.array(image).astype(np.float32) / 255.0  # HWC
-    input_array = np.transpose(input_array, (2, 0, 1))        # CHW
-    input_array = np.expand_dims(input_array, axis=0)         # Add batch dim
-    return input_array
+    arr = np.array(image, dtype=np.float32) / 255.0
+    arr = np.transpose(arr, (2, 0, 1))
+    return np.expand_dims(arr, axis=0)
 
-# ===================== 4. PREDICTION FUNCTION =====================
+# ===================== 3. PREDICTION FUNCTION =====================
 
 def predict_snake(image: Image.Image) -> dict:
-    if not session:
-        return {
-            "error": "Model not loaded.",
-            "species_name": "Unknown",
-            "venom_status": -1,
-            "antivenom_name": "N/A",
-            "manufacturer": "N/A",
-            "confidence": 0.0,
-            "countries": "N/A"
-        }
-
     try:
+        # Lazy load CSVs to save memory
+        metadata = pd.read_csv(BASE_DIR / "train_metadata.csv")
+        venom_data = pd.read_csv(BASE_DIR / "venomstatus_with_antivenom.csv")
+        country_metadata = pd.read_csv(BASE_DIR / "min-train_metadata.csv")
+
+        class_names = metadata['binomial'].unique()
+
         input_tensor = preprocess_image(image)
         input_name = session.get_inputs()[0].name
         output_name = session.get_outputs()[0].name
@@ -99,28 +69,36 @@ def predict_snake(image: Image.Image) -> dict:
     except Exception as e:
         return {"error": "Prediction failed", "detail": str(e)}
 
-# ===================== 5. IMAGE GENERATION FUNCTION =====================
+# ===================== 4. GEMINI IMAGE GENERATION =====================
+
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 def generate_image_from_text(prompt: str) -> tuple[bytes, Image.Image]:
     if not GEMINI_API_KEY:
-        raise ConnectionError("Gemini API key not configured. Cannot generate image.")
+        raise ConnectionError("Gemini API key not configured.")
+
+    # Configure Gemini on-demand
+    genai.configure(api_key=GEMINI_API_KEY)
 
     full_prompt = f"Highly detailed, scientifically accurate photo of a snake: {prompt}"
 
-    result = genai.models.get("models/gemini-2.5-flash-preview-05-20").generate_content(
+    # Use the official image generation model
+    result = genai.models.get("imagen-3.0-generate-002").generate_content(
         prompt=full_prompt,
-        temperature=1.0,
-        max_output_tokens=1024
+        config=dict(
+            number_of_images=1,
+            output_mime_type="image/png",
+            aspect_ratio="1:1"
+        )
     )
 
-    if not result or not result.output_text:
-        raise RuntimeError("Gemini API returned no image or text.")
+    if not result.generated_images:
+        raise RuntimeError("Gemini API returned no image.")
 
-    # If your Gemini plan supports image output:
-    # Use the proper image generation model
-    # e.g., genai.models.get("imagen-3.0-generate-002").generate_content(...)
+    # Extract image bytes
+    image_bytes = result.generated_images[0].image.image_bytes
+    gen_image_pil = Image.open(io.BytesIO(image_bytes)).convert("RGB")
 
-    # For now, return the text as a placeholder
-    image_bytes = result.output_text.encode("utf-8")
-    gen_image_pil = Image.new("RGB", (224, 224), color=(255, 255, 255))
+    # Resize to 224x224 to match ONNX input
+    gen_image_pil = gen_image_pil.resize((224, 224))
     return image_bytes, gen_image_pil
