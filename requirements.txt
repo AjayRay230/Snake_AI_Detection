@@ -1,0 +1,11 @@
+# /snake-ai-api/requirements.txt
+fastapi
+uvicorn[standard]
+onnxruntime
+Pillow
+pandas
+numpy
+scipy
+torch
+torchvision
+google-genai

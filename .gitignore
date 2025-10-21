@@ -1,0 +1,17 @@
+# Ignore large model and data files
+api/ViT_PreProcessing-ops11-preprocessing-int-dynam_graph.onnx
+api/venomstatus_with_antivenom.csv
+api/venomstatus_with_antivenom.xlsx
+api/train_metadata.csv
+
+# Python caches
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Environment files
+.env
+
+# OS/other unnecessary files
+.DS_Store
