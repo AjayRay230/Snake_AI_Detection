@@ -1,3 +1,4 @@
+# /snake-ai-api/requirements.txt
 fastapi
 uvicorn[standard]
 onnxruntime
@@ -7,5 +8,4 @@ numpy
 scipy
 torch
 torchvision
-google-generativeai
-python-dotenv
+google-genai
