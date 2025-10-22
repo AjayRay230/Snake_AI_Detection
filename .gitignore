@@ -9,9 +9,7 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
-
-# Environment files
-.env
+venv/
 
 # OS/other unnecessary files
 .DS_Store
